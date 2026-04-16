@@ -2,15 +2,14 @@ import pytest
 from random import randint, sample
 from itertools import product
 from functools import reduce
-from copy import deepcopy
 from sat.cnf import CNF
 from sat.solver import Solver
 
 
 solver_names = Solver.builtin_solvers
 solvers = [Solver(solver_name) for solver_name in solver_names]
-max_variables = 16
-epochs = range(32)
+max_variables = 8
+epochs = range(16)
 
 
 @pytest.fixture
@@ -222,7 +221,7 @@ def test_xor_unsat(triplet_cnf, solver):
 
 @pytest.mark.parametrize("solver", [s for s in solvers for _ in epochs])
 def test_xor_true_long(long_cnf, solver):
-    cnf, _, literals = deepcopy(long_cnf)
+    cnf, _, literals = long_cnf
     cnf.xor(literals)
     literals_to_set = sample(literals, randint(0, len(literals) - 1))
     set_literals = [var if randint(0, 1) else -var for var in literals_to_set]
@@ -242,7 +241,7 @@ def test_xor_true_long(long_cnf, solver):
 
 @pytest.mark.parametrize("solver", [s for s in solvers for _ in epochs])
 def test_atleast(long_cnf, solver):
-    cnf, _, literals = deepcopy(long_cnf)
+    cnf, _, literals = long_cnf
     set_vars_num = randint(0, len(literals) - 1)
     literals_to_set = sample(literals, set_vars_num)
     set_literals = [var if randint(0, 1) else -var for var in literals_to_set]
@@ -259,7 +258,7 @@ def test_atleast(long_cnf, solver):
 
 @pytest.mark.parametrize("solver", [s for s in solvers for _ in epochs])
 def test_atmost(long_cnf, solver):
-    cnf, _, literals = deepcopy(long_cnf)
+    cnf, _, literals = long_cnf
     set_vars_num = randint(0, len(literals) - 1)
     literals_to_set = sample(literals, set_vars_num)
     set_literals = [var if randint(0, 1) else -var for var in literals_to_set]

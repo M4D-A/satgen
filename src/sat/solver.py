@@ -8,13 +8,14 @@ import queue
 
 class Solver:
     external_solvers = {
-        "kissat": ["-q"],
+        # "kissat": ["-q"],
         # "kissat": [],
         # "cms":["--verb", "0"],
         # "parkissat": ["-v=1", "-c=8", "-max-memory=8"]
     }
 
     builtin_solvers = [
+        "kissat",
         "cadical103",
         "cadical153",
         "gluecard3",
