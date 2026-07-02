@@ -115,3 +115,68 @@ class Solver:
         ints = [int(s) for s in string.split() if is_int(s)]
         ids = [i for i in ints if i != 0]
         return (True, ids)
+
+
+class IncrementalSolver:
+    """Persistent pysat solver — learned clauses and internal state survive
+    across `solve()` calls, and `assumptions` are supported for cheap what-if
+    queries without mutating the formula.
+
+    Only pysat builtin backends are usable; external solvers like kissat have
+    no incremental interface.
+    """
+
+    # Glucose-family solvers require `incr=True` for correct assumption-based
+    # incremental behaviour. Every other pysat builtin supports incremental
+    # natively and rejects the flag with NotImplementedError.
+    _needs_incr_flag = {
+        "glucose3", "glucose4", "glucose42",
+        "gluecard3", "gluecard4",
+    }
+
+    def __init__(self, name: str, cnf: CNF | None = None):
+        if name not in Solver.builtin_solvers:
+            raise ValueError(
+                f"Solver {name} not supported for incremental use "
+                f"(builtins only: {Solver.builtin_solvers})"
+            )
+        self.__name = name
+        kwargs = {"incr": True} if name in self._needs_incr_flag else {}
+        self._solver = PySolver(name=name, **kwargs)
+        if cnf is not None:
+            self.append(cnf)
+
+    def name(self) -> str:
+        return self.__name
+
+    def append(self, cnf: CNF) -> "IncrementalSolver":
+        self._solver.append_formula(cnf.clauses())
+        return self
+
+    def add_clause(self, clause: list[int]) -> "IncrementalSolver":
+        self._solver.add_clause(clause)
+        return self
+
+    def solve(self, assumptions: list[int] | None = None) -> Solution:
+        sat = self._solver.solve(assumptions=assumptions or [])
+        if sat:
+            model = self._solver.get_model() or []
+            return (True, model)
+        return (False, [])
+
+    def get_core(self) -> list[int]:
+        """Unsat core over the last `solve()` assumptions, or [] if none."""
+        return self._solver.get_core() or []
+
+    def stats(self) -> dict:
+        """Solver-reported accounting (conflicts, decisions, propagations, ...)."""
+        return dict(self._solver.accum_stats())
+
+    def close(self) -> None:
+        self._solver.delete()
+
+    def __enter__(self) -> "IncrementalSolver":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
