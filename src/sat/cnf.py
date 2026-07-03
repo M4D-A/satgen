@@ -3,7 +3,7 @@ from pysat.formula import CNF as CNF_core, IDPool
 from pysat.card import CardEnc
 from itertools import product
 
-Solution = tuple[bool, list[int]]
+Solution = tuple[bool, list[int]] # TODO: Poprawić solution (przyjmuje literały po nazwach i po obiektach)
 
 
 class Literal:
@@ -92,6 +92,7 @@ class CNF():
                 return False
         return True
 
+    #TODO: rezerwacja internal jako osobna prywatna funkcja
     def reserve_name(self, name: str, internal: bool = False) -> Literal:
         if internal:
             assert name[0].isupper(), \
@@ -217,6 +218,30 @@ class CNF():
         lval_a = literal_a.value()
         lval_b = literal_b.value()
         self._cnf.append([-lval_a, -lval_b])
+        return self
+
+    def add(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> "CNF":
+        n = len(a)
+        assert len(b) == n and len(c) == n, "All three lists must have the same length"
+
+        carries = [self.reserve_name(f"A{self._v_counter + i}", True) for i in range(n)]
+        self._v_counter += n
+        self.set_literal(carries[0], False)
+
+        for i in range(n):
+            # c[i] = a[i] XOR b[i] XOR carry[i]  ↔  a[i] XOR b[i] XOR carry[i] XOR c[i] = 0
+            self.xor([a[i], b[i], carries[i], c[i]])
+
+            if i < n - 1:
+                # carry[i+1] = majority(a[i], b[i], carry[i]) #TODO: maj(out, [in])
+                ai, bi, cin, cout = a[i].value(), b[i].value(), carries[i].value(), carries[i + 1].value()
+                self._cnf.append([-cout, ai, bi])
+                self._cnf.append([-cout, ai, cin])
+                self._cnf.append([-cout, bi, cin])
+                self._cnf.append([-ai, -bi, cout])
+                self._cnf.append([-ai, -cin, cout])
+                self._cnf.append([-bi, -cin, cout])
+
         return self
 
     def exclude(self, literals: list[Literal]) -> "CNF":
