@@ -3,10 +3,7 @@ from pysat.formula import CNF as CNF_core, IDPool
 from pysat.card import CardEnc
 from itertools import product
 
-Solution = tuple[bool, list[int]] # TODO: Poprawić solution (przyjmuje literały po nazwach i po obiektach)
-
-
-class Literal:
+class Literal: #TODO: dataclas??
     def __init__(self, name: str, id: int, value: bool | None = None):
         self.__name = name
 
@@ -38,14 +35,14 @@ class Literal:
     def __abs__(self) -> "Literal":
         return Literal(self.__name, abs(self.__value))
 
-
 class CNF():
     def __init__(self):
         self._cnf = CNF_core()
         self._v_pool = IDPool(start_from=1)
+        self._v_counter = 0
+
         self._max_clause_len = 3
         self._caridnality_enc = 1
-        self._v_counter = 0
 
     def __str__(self) -> str:
         clauses = self.clauses()
@@ -92,20 +89,24 @@ class CNF():
                 return False
         return True
 
-    #TODO: rezerwacja internal jako osobna prywatna funkcja
-    def reserve_name(self, name: str, internal: bool = False) -> Literal:
-        if internal:
-            assert name[0].isupper(), \
-                "Internal variable name cannot start with lowercase letter"
-        else:
-            assert name[0].islower(), \
-                "Regular variable name cannot start with uppercase letter"
+    def reserve_name(self, name: str) -> Literal:
+        assert name[0].islower(), "Regular variable name cannot start with uppercase letter"
         assert name not in self._v_pool.obj2id, "Name already registered"
         id = self._v_pool.id(name)
         return Literal(name, id)
 
-    def reserve_names(self, names: Iterable[str], internal: bool = False) -> list[Literal]:
-        return [self.reserve_name(name, internal) for name in names]
+    def reserve_names(self, names: Iterable[str]) -> list[Literal]:
+        return [self.reserve_name(name) for name in names]
+
+    def _reserve_internal(self) -> Literal:
+        name = f"A{self._v_counter}"
+        self._v_counter += 1
+        assert name not in self._v_pool.obj2id, "Name already registered"
+        id = self._v_pool.id(name)
+        return Literal(name, id)
+
+    def _reserve_internals(self, n: int) -> list[Literal]:
+        return [self._reserve_internal() for _ in range(n)]
 
     def name_to_literal(self, name: str) -> Literal:
         assert name in self._v_pool.obj2id.keys(), "Name not found in the pool"
@@ -175,8 +176,7 @@ class CNF():
         else:
             _ = [a_elem.value() for a_elem in literals]
             slice = literals[:clause_len - 1]
-            aux_literal = self.reserve_name(f"A{self._v_counter}", True)
-            self._v_counter += 1
+            aux_literal = self._reserve_internal()
             self.xor([aux_literal] + slice)
             self.xor([aux_literal] + literals[clause_len - 1:])
         return self
@@ -224,8 +224,7 @@ class CNF():
         n = len(a)
         assert len(b) == n and len(c) == n, "All three lists must have the same length"
 
-        carries = [self.reserve_name(f"A{self._v_counter + i}", True) for i in range(n)]
-        self._v_counter += n
+        carries = self._reserve_internals(n)
         self.set_literal(carries[0], False)
 
         for i in range(n):
@@ -245,8 +244,7 @@ class CNF():
         return self
 
     def exclude(self, literals: list[Literal]) -> "CNF":
-        aux_literal = self.reserve_name(f"A{self._v_counter}", True)
-        self._v_counter += 1
+        aux_literal = self._reserve_internal()
         self.equals_and(aux_literal, literals)
         self.set_literal(-aux_literal)
         return self
@@ -255,12 +253,3 @@ class CNF():
         clause = [-lit for lit in literals]
         self._cnf.clauses.append(clause)
         return self
-
-    def make_dict_model(self, solution: Solution) -> dict:
-        sat, solution_ints = solution
-        if not sat:
-            return {"sat": False}
-        all_literals = self.v_pool().obj2id.items()
-        model = {name: -id not in solution_ints for name, id in all_literals}
-        model["sat"] = True
-        return model

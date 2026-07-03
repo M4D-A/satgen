@@ -1,6 +1,4 @@
 import pytest
-from random import randint, sample
-from itertools import product
 from functools import reduce
 from sat.cnf import CNF
 from sat.solver import Solver
@@ -51,85 +49,76 @@ def ternary_cnf(request):
 def test_equals_true(ab_cnf, solver):
     cnf, (a, b) = ab_cnf
     cnf.equals(a, b).set_literal(a)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert model[a.name()]
-    assert model[b.name()]
+    sol = solver.solve(cnf)
+    assert sol
+    assert sol[a]
+    assert sol[b]
 
 
 def test_equals_false(ab_cnf, solver):
     cnf, (a, b) = ab_cnf
     cnf.equals(a, b).set_literal(-b)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert not model[a.name()]
-    assert not model[b.name()]
+    sol = solver.solve(cnf)
+    assert sol
+    assert not sol[a]
+    assert not sol[b]
 
 
 def test_equals_unsat(ab_cnf, solver):
     cnf, (a, b) = ab_cnf
     cnf.equals(a, b).set_literals([a, -b])
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert not model["sat"]
+    sol = solver.solve(cnf)
+    assert not sol
 
 
 def test_and_true(n_cnf, solver):
     cnf, primary, literals = n_cnf
     cnf.equals_and(primary, literals).set_literal(primary)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert model[primary.name()]
-    assert all(model[lit.name()] for lit in literals)
+    sol = solver.solve(cnf)
+    assert sol
+    assert sol[primary]
+    assert all(sol[lit] for lit in literals)
 
 
 def test_and_false(n_cnf, solver):
     cnf, primary, literals = n_cnf
     cnf.equals_and(primary, literals).set_literal(-primary)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert not model[primary.name()]
-    assert any(not model[lit.name()] for lit in literals)
+    sol = solver.solve(cnf)
+    assert sol
+    assert not sol[primary]
+    assert any(not sol[lit] for lit in literals)
 
 
 def test_and_unsat(n_cnf, solver):
     cnf, primary, literals = n_cnf
     cnf.equals_and(primary, literals).set_literals([primary, -literals[0]])
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert not model["sat"]
+    sol = solver.solve(cnf)
+    assert not sol
 
 
 def test_or_true(n_cnf, solver):
     cnf, primary, literals = n_cnf
     cnf.equals_or(primary, literals).set_literal(primary)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert model[primary.name()]
-    assert any(model[lit.name()] for lit in literals)
+    sol = solver.solve(cnf)
+    assert sol
+    assert sol[primary]
+    assert any(sol[lit] for lit in literals)
 
 
 def test_or_false(n_cnf, solver):
     cnf, primary, literals = n_cnf
     cnf.equals_or(primary, literals).set_literal(-primary)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert not model[primary.name()]
-    assert all(not model[lit.name()] for lit in literals)
+    sol = solver.solve(cnf)
+    assert sol
+    assert not sol[primary]
+    assert all(not sol[lit] for lit in literals)
 
 
 def test_or_unsat(n_cnf, solver):
     cnf, primary, literals = n_cnf
     cnf.equals_or(primary, literals).set_literals([-primary, literals[0]])
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert not model["sat"]
+    sol = solver.solve(cnf)
+    assert not sol
 
 
 def test_xor_true(n_cnf, solver, rng):
@@ -138,16 +127,14 @@ def test_xor_true(n_cnf, solver, rng):
     literals_to_set = rng.sample(literals, rng.randint(0, len(literals) - 1))
     set_literals = [var if rng.randint(0, 1) else -var for var in literals_to_set]
     cnf.set_literals(set_literals)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
+    sol = solver.solve(cnf)
+    assert sol
     for lit in literals_to_set:
-        name = lit.name()
         if lit in set_literals:
-            assert model[name]
+            assert sol[lit]
         if -lit in set_literals:
-            assert not model[name]
-    value_map = map(lambda var: model[var.name()], literals)
-    value = reduce(lambda x, y: x ^ y, value_map)
+            assert not sol[lit]
+    value = reduce(lambda x, y: x ^ y, (sol[var] for var in literals))
     assert not value
 
 
@@ -161,10 +148,9 @@ def test_atleast(n_cnf, solver, rng):
     lower_bound = rng.randint(1, max_lower_bound)
     cnf.atleast(literals, lower_bound)
     cnf.set_literals(set_literals)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert sum([model[lit.name()] for lit in literals]) >= lower_bound
+    sol = solver.solve(cnf)
+    assert sol
+    assert sum(sol[lit] for lit in literals) >= lower_bound
 
 
 def test_atmost(n_cnf, solver, rng):
@@ -176,10 +162,9 @@ def test_atmost(n_cnf, solver, rng):
     upper_bound = rng.randint(set_true_num, len(literals) - 1)
     cnf.atmost(literals, upper_bound)
     cnf.set_literals(set_literals)
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    assert sum([model[lit.name()] for lit in literals]) <= upper_bound
+    sol = solver.solve(cnf)
+    assert sol
+    assert sum(sol[lit] for lit in literals) <= upper_bound
 
 
 def test_add(ternary_cnf, solver, rng):
@@ -194,11 +179,9 @@ def test_add(ternary_cnf, solver, rng):
         cnf.set_literal(a_lits[i], bool((a_val >> i) & 1))
         cnf.set_literal(b_lits[i], bool((b_val >> i) & 1))
 
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    c_val = sum(int(model[c_lits[i].name()]) << i for i in range(n))
-    assert c_val == (a_val + b_val) % (2**n)
+    sol = solver.solve(cnf)
+    assert sol
+    assert sol.value_of(c_lits) == (a_val + b_val) % (2**n)
 
 
 def test_add_unsat(ternary_cnf, solver, rng):
@@ -216,9 +199,8 @@ def test_add_unsat(ternary_cnf, solver, rng):
         cnf.set_literal(b_lits[i], bool((b_val >> i) & 1))
         cnf.set_literal(c_lits[i], bool((wrong >> i) & 1))
 
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert not model["sat"]
+    sol = solver.solve(cnf)
+    assert not sol
 
 
 def test_add_solve_b(ternary_cnf, solver, rng):
@@ -233,8 +215,6 @@ def test_add_solve_b(ternary_cnf, solver, rng):
         cnf.set_literal(a_lits[i], bool((a_val >> i) & 1))
         cnf.set_literal(c_lits[i], bool((c_val >> i) & 1))
 
-    solution = solver.solve(cnf)
-    model = cnf.make_dict_model(solution)
-    assert model["sat"]
-    b_val = sum(int(model[b_lits[i].name()]) << i for i in range(n))
-    assert (a_val + b_val) % (2**n) == c_val
+    sol = solver.solve(cnf)
+    assert sol
+    assert (a_val + sol.value_of(b_lits)) % (2**n) == c_val
