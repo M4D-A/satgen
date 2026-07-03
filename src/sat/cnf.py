@@ -17,7 +17,7 @@ class Literal: #TODO: dataclas??
     def __bool__(self) -> bool:
         return self.__value > 0
 
-    def __neg__(self) -> "Literal":
+    def __neg__(self) -> Literal:
         return Literal(self.__name, -self.__value)
 
     def __str__(self) -> str:
@@ -32,7 +32,7 @@ class Literal: #TODO: dataclas??
     def __eq__(self, other) -> bool:
         return (self.name(), self.value()) == (other.name(), other.value())
 
-    def __abs__(self) -> "Literal":
+    def __abs__(self) -> Literal:
         return Literal(self.__name, abs(self.__value))
 
 class CNF():
@@ -120,7 +120,7 @@ class CNF():
         name = str(pool.obj(abs_id))
         return Literal(name, id)
 
-    def set_literal(self, literal: Literal, value: bool | None = None) -> "CNF":
+    def set_literal(self, literal: Literal, value: bool | None = None) -> CNF:
         lval = literal.value()
         if value is not None:
             sign = 1 if value else -1
@@ -128,19 +128,19 @@ class CNF():
         self._cnf.append([lval])
         return self
 
-    def set_literals(self, literals: list[Literal]) -> "CNF":
+    def set_literals(self, literals: list[Literal]) -> CNF:
         for lit in literals:
             self.set_literal(lit)
         return self
 
-    def equals(self, literal_a: Literal, literal_b: Literal) -> "CNF":
+    def equals(self, literal_a: Literal, literal_b: Literal) -> CNF:
         lval_a = literal_a.value()
         lval_b = literal_b.value()
         self._cnf.append([-lval_a, lval_b])
         self._cnf.append([lval_a, -lval_b])
         return self
 
-    def equals_and(self, literal_a: Literal, literals_b: list[Literal]) -> "CNF":
+    def equals_and(self, literal_a: Literal, literals_b: list[Literal]) -> CNF:
         lval_a = literal_a.value()
         self._cnf.append([lval_a] + [-(b_elem.value())
                          for b_elem in literals_b])
@@ -148,13 +148,13 @@ class CNF():
         self._cnf.clauses += new_clauses
         return self
 
-    def equals_and_by_values(self, literal_a: int, literals_b: list[int]) -> "CNF":
+    def equals_and_by_values(self, literal_a: int, literals_b: list[int]) -> CNF:
         header_clauses = [[literal_a] + [-b_elem for b_elem in literals_b]]
         new_clauses = header_clauses + [[-literal_a, b_elem] for b_elem in literals_b]
         self._cnf.clauses += new_clauses
         return self
 
-    def equals_or(self, literal_a: Literal, literals_b: list[Literal]) -> "CNF":
+    def equals_or(self, literal_a: Literal, literals_b: list[Literal]) -> CNF:
         lval_a = literal_a.value()
         self._cnf.append([-lval_a] + [b_elem.value()
                          for b_elem in literals_b])
@@ -162,7 +162,7 @@ class CNF():
         self._cnf.clauses += new_clauses
         return self
 
-    def xor(self, literals: list[Literal]) -> "CNF":
+    def xor(self, literals: list[Literal]) -> CNF:
         clause_len = self._max_clause_len
         if clause_len and clause_len <= 2:
             raise ValueError("split must be greater than 2 if set to True")
@@ -181,7 +181,7 @@ class CNF():
             self.xor([aux_literal] + literals[clause_len - 1:])
         return self
 
-    def atleast(self, literals: list[Literal], lower_bound: int) -> "CNF":
+    def atleast(self, literals: list[Literal], lower_bound: int) -> CNF:
         ids = [lit.value() for lit in literals]
         clauses = CardEnc.atleast(
             ids,
@@ -192,7 +192,7 @@ class CNF():
         self._cnf.extend(clauses)
         return self
 
-    def atmost(self, literals: list[Literal], upper_bound: int) -> "CNF":
+    def atmost(self, literals: list[Literal], upper_bound: int) -> CNF:
         ids = [lit.value() for lit in literals]
         clauses = CardEnc.atmost(
             ids,
@@ -203,7 +203,7 @@ class CNF():
         self._cnf.extend(clauses)
         return self
 
-    def exactly(self, literals: list[Literal], upper_bound: int) -> "CNF":
+    def exactly(self, literals: list[Literal], upper_bound: int) -> CNF:
         ids = [lit.value() for lit in literals]
         clauses = CardEnc.equals(
             ids,
@@ -214,13 +214,13 @@ class CNF():
         self._cnf.extend(clauses)
         return self
 
-    def nand(self, literal_a: Literal, literal_b: Literal) -> "CNF":
+    def nand(self, literal_a: Literal, literal_b: Literal) -> CNF:
         lval_a = literal_a.value()
         lval_b = literal_b.value()
         self._cnf.append([-lval_a, -lval_b])
         return self
 
-    def add(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> "CNF":
+    def add(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> CNF:
         n = len(a)
         assert len(b) == n and len(c) == n, "All three lists must have the same length"
 
@@ -243,13 +243,13 @@ class CNF():
 
         return self
 
-    def exclude(self, literals: list[Literal]) -> "CNF":
+    def exclude(self, literals: list[Literal]) -> CNF:
         aux_literal = self._reserve_internal()
         self.equals_and(aux_literal, literals)
         self.set_literal(-aux_literal)
         return self
 
-    def exclude_by_values(self, literals: list[int]) -> "CNF":
+    def exclude_by_values(self, literals: list[int]) -> CNF:
         clause = [-lit for lit in literals]
         self._cnf.clauses.append(clause)
         return self
