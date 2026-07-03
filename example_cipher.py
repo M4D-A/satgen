@@ -44,6 +44,10 @@ NUM_WARMUPS = 12
 SEED_TARGET = 0xDEAD
 SEED_WARMUP = 0xBEEF
 
+# Step sizes swept in Experiment 3. Each s produces the schedule
+#   k = s, 2s, 3s, ..., largest multiple of s below BLOCK_BITS.
+STEP_SIZES = [1, 2, 4, 8]
+
 # PRESENT 4-bit S-box.
 SBOX = [
     0xC, 0x5, 0x6, 0xB, 0x9, 0x0, 0xA, 0xD,
@@ -166,6 +170,34 @@ def solve_for_key(solver: IncrementalSolver,
     return dt, extract_int(ids, key_lits)
 
 
+def warm_up_progressive(solver: IncrementalSolver,
+                        ptx_lits, ctx_lits,
+                        target_ptx: int, target_ctx: int,
+                        step: int = 1) -> tuple[float, int]:
+    """Prime the solver by revealing progressively more bits of the *target*
+    ptx and ctx as assumptions. Bits are revealed in chunks of `step`, so the
+    schedule is k = step, 2·step, 3·step, ..., largest multiple below
+    BLOCK_BITS. Each partial query is severely under-constrained (many valid
+    keys) but exercises the base cipher structure around the target's actual
+    bit pattern, so the learned clauses are directly relevant to the final
+    full-target solve.
+    """
+    total = 0.0
+    steps = 0
+    for k in range(step, BLOCK_BITS, step):
+        assumptions = (
+            value_to_assumptions(ptx_lits[:k], target_ptx)
+            + value_to_assumptions(ctx_lits[:k], target_ctx)
+        )
+        t0 = time.perf_counter()
+        sat, _ = solver.solve(assumptions=assumptions)
+        total += time.perf_counter() - t0
+        steps += 1
+        if not sat:
+            raise RuntimeError(f"unexpected UNSAT at k={k}")
+    return total, steps
+
+
 # ------------------------------ demo ---------------------------------------
 
 
@@ -215,15 +247,46 @@ def main() -> None:
     print(f"  total:        {total * 1000:8.1f} ms")
 
     print()
-    print("Comparison")
+    print("Experiment 3: progressive priming with target bits, varying step size")
     print("-" * 62)
-    solve_speedup = adhoc_dt / warmed_dt if warmed_dt > 0 else float("inf")
-    total_ratio = total / adhoc_dt if adhoc_dt > 0 else float("inf")
-    print(f"  target solve: ad-hoc {adhoc_dt * 1000:.1f} ms  →  "
-          f"warmed {warmed_dt * 1000:.1f} ms   ({solve_speedup:.2f}× on target)")
-    print(f"  total wall:   ad-hoc {adhoc_dt * 1000:.1f} ms  →  "
-          f"warmed {total * 1000:.1f} ms   "
-          f"({total_ratio:.2f}× total {'(worse)' if total_ratio > 1 else '(better)'})")
+    prog_results: list[tuple[int, float, int, float]] = []  # (step, warm, probes, target)
+    for step in STEP_SIZES:
+        with IncrementalSolver(SOLVER_NAME, cnf) as solver:
+            prog_warm_time, prog_steps = warm_up_progressive(
+                solver, ptx_lits, ctx_lits, target_ptx, target_ctx, step=step)
+            prog_target_dt, prog_recovered = solve_for_key(
+                solver, ptx_lits, ctx_lits, key_lits, target_ptx, target_ctx)
+        assert encrypt(prog_recovered, target_ptx) == target_ctx
+        prog_results.append((step, prog_warm_time, prog_steps, prog_target_dt))
+        match = "(== target)" if prog_recovered == target_key else "(other valid key)"
+        print(f"  step={step:2d}  probes={prog_steps:2d}  "
+              f"warm-up={prog_warm_time * 1000:8.1f} ms  "
+              f"target={prog_target_dt * 1000:7.1f} ms  "
+              f"total={(prog_warm_time + prog_target_dt) * 1000:8.1f} ms  "
+              f"key={prog_recovered:#06x} {match}")
+
+    print()
+    print("Comparison — target-solve time in isolation")
+    print("-" * 62)
+    print(f"  ad-hoc:                    {adhoc_dt * 1000:9.1f} ms   (baseline)")
+    print(f"  random probes:             {warmed_dt * 1000:9.1f} ms   "
+          f"({adhoc_dt / warmed_dt:7.2f}× vs baseline)")
+    for step, _, _, pt_dt in prog_results:
+        ratio = adhoc_dt / pt_dt if pt_dt > 0 else float("inf")
+        print(f"  progressive prime, s={step:<2d}   {pt_dt * 1000:9.1f} ms   "
+              f"({ratio:7.2f}× vs baseline)")
+
+    print()
+    print("Comparison — total wall time (warm-up + target)")
+    print("-" * 62)
+    print(f"  ad-hoc:                    {adhoc_dt * 1000:9.1f} ms   (baseline)")
+    print(f"  random probes:             {total * 1000:9.1f} ms   "
+          f"({total / adhoc_dt:7.2f}× vs baseline)")
+    for step, warm, _, pt_dt in prog_results:
+        tot = warm + pt_dt
+        ratio = tot / adhoc_dt if adhoc_dt > 0 else float("inf")
+        print(f"  progressive prime, s={step:<2d}   {tot * 1000:9.1f} ms   "
+              f"({ratio:7.2f}× vs baseline)")
 
 
 if __name__ == "__main__":
