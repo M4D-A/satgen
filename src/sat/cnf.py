@@ -35,6 +35,7 @@ class Literal: #TODO: dataclas??
     def __abs__(self) -> Literal:
         return Literal(self.__name, abs(self.__value))
 
+
 class CNF():
     def __init__(self):
         self._cnf = CNF_core()

@@ -163,11 +163,11 @@ def solve_for_key(solver: IncrementalSolver,
         + value_to_assumptions(ctx_lits, ctx_val)
     )
     t0 = time.perf_counter()
-    sat, ids = solver.solve(assumptions=assumptions)
+    sol = solver.solve(assumptions=assumptions)
     dt = time.perf_counter() - t0
-    if not sat:
+    if not sol:
         raise RuntimeError("unexpected UNSAT — encoding is broken")
-    return dt, extract_int(ids, key_lits)
+    return dt, extract_int(sol.assignment(), key_lits)
 
 
 def warm_up_progressive(solver: IncrementalSolver,
@@ -190,10 +190,10 @@ def warm_up_progressive(solver: IncrementalSolver,
             + value_to_assumptions(ctx_lits[:k], target_ctx)
         )
         t0 = time.perf_counter()
-        sat, _ = solver.solve(assumptions=assumptions)
+        sol = solver.solve(assumptions=assumptions)
         total += time.perf_counter() - t0
         steps += 1
-        if not sat:
+        if not sol:
             raise RuntimeError(f"unexpected UNSAT at k={k}")
     return total, steps
 

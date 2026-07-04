@@ -89,6 +89,7 @@ class Solution:
             return "Solution(unsat)"
         return f"Solution(sat, {len(self._assignment)} vars)"
 
+
 class Solver:
     external_solvers = {
         # "kissat": ["-q"],
@@ -201,6 +202,7 @@ class Solver:
         ids = [i for i in ints if i != 0]
         return (True, ids)
 
+
 class IncrementalSolver:
     """Persistent pysat solver — learned clauses and internal state survive
     across `solve()` calls, and `assumptions` are supported for cheap what-if
@@ -246,7 +248,7 @@ class IncrementalSolver:
         return self
 
     def solve(self, assumptions: list[int] | None = None) -> Solution:
-        sat = self._solver.solve(assumptions=assumptions or [])
+        sat = True if self._solver.solve(assumptions=assumptions or []) else False
         model = self._solver.get_model() or [] if sat else []
         return Solution(sat, model, self._v_pool)
 
@@ -256,7 +258,7 @@ class IncrementalSolver:
 
     def stats(self) -> dict:
         """Solver-reported accounting (conflicts, decisions, propagations, ...)."""
-        return dict(self._solver.accum_stats())
+        return dict(self._solver.accum_stats() or {})
 
     def close(self) -> None:
         self._solver.delete()
@@ -264,5 +266,5 @@ class IncrementalSolver:
     def __enter__(self) -> "IncrementalSolver":
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(self, *_) -> None:
         self.close()
