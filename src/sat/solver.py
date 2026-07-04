@@ -77,6 +77,12 @@ class Solution:
         """Interpret a list of literals as an unsigned integer, LSB first."""
         return sum(int(self[lit]) << i for i, lit in enumerate(literals))
 
+    def assign(self, literals: list[Literal]) -> list[Literal]:
+        """Return each literal with its sign set by the solution, ignoring input signs."""
+        if not self._sat:
+            raise ValueError("cannot query an unsatisfiable solution")
+        return [abs(lit) if self[abs(lit)] else -abs(lit) for lit in literals]
+
     def true_names(self) -> list[str]:
         """Names of all registered variables assigned True."""
         if not self._sat or self._v_pool is None:
