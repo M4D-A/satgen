@@ -88,23 +88,6 @@ def encrypt(key: int, ptx: int) -> int:
 # ------------------------------ CNF encoding -------------------------------
 
 
-def encode_sbox(cnf: CNF, in_bits, out_bits) -> None:
-    """Encode one 4->4 S-box as 64 clauses (one per (input_pattern, output_bit))."""
-    for in_val in range(16):
-        out_val = SBOX[in_val]
-        for j in range(4):
-            clause = []
-            # "at least one input bit disagrees with in_val" — clause literals
-            # are the "disagreement" for each position.
-            for k in range(4):
-                bit = (in_val >> k) & 1
-                clause.append(-in_bits[k].value() if bit else in_bits[k].value())
-            # "...or output bit j takes the correct value for this input."
-            out_bit = (out_val >> j) & 1
-            clause.append(out_bits[j].value() if out_bit else -out_bits[j].value())
-            cnf._cnf.clauses.append(clause)
-
-
 def build_cipher_cnf() -> tuple[CNF, list, list, list]:
     cnf = CNF()
     key = cnf.reserve_names([f"key_{i}" for i in range(KEY_BITS)])
@@ -114,26 +97,23 @@ def build_cipher_cnf() -> tuple[CNF, list, list, list]:
     state = ptx
     for r in range(NUM_ROUNDS):
         xored = cnf.reserve_names([f"x_r{r}_{i}" for i in range(BLOCK_BITS)])
-        for i in range(BLOCK_BITS):
-            cnf.xor([state[i], key[i], xored[i]])
+        cnf.xor_words(state, key, xored)
 
         sboxed = cnf.reserve_names([f"s_r{r}_{i}" for i in range(BLOCK_BITS)])
         for nib in range(BLOCK_BITS // 4):
-            encode_sbox(cnf,
-                        xored[4 * nib:4 * (nib + 1)],
-                        sboxed[4 * nib:4 * (nib + 1)])
+            cnf.sbox(xored[4 * nib:4 * (nib + 1)],
+                     sboxed[4 * nib:4 * (nib + 1)],
+                     SBOX)
 
         if r < NUM_ROUNDS - 1:
-            permuted: list = [None] * BLOCK_BITS
-            for i in range(BLOCK_BITS):
-                permuted[PERM[i]] = sboxed[i]
+            permuted = cnf.reserve_names([f"p_r{r}_{i}" for i in range(BLOCK_BITS)])
+            cnf.permute_words(sboxed, permuted, PERM)
             state = permuted
         else:
             state = sboxed
 
     # Final AddRoundKey → constrained equal to ctx.
-    for i in range(BLOCK_BITS):
-        cnf.xor([state[i], key[i], ctx[i]])
+    cnf.xor_words(state, key, ctx)
 
     return cnf, key, ptx, ctx
 
