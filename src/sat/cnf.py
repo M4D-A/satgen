@@ -134,6 +134,11 @@ class CNF():
             self.set_literal(lit)
         return self
 
+    def set_word(self, literals: list[Literal], value) -> CNF:
+        for i, lit in enumerate(literals):
+            self.set_literal(lit, bool((value >> i) & 1))
+        return self
+
     def equals(self, literal_a: Literal, literal_b: Literal) -> CNF:
         lval_a = literal_a.value()
         lval_b = literal_b.value()
@@ -221,7 +226,7 @@ class CNF():
         self._cnf.append([-lval_a, -lval_b])
         return self
 
-    def add(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> CNF:
+    def add_words(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> CNF:
         n = len(a)
         assert len(b) == n and len(c) == n, "All three lists must have the same length"
 
@@ -241,6 +246,47 @@ class CNF():
                 self._cnf.append([-ai, -bi, cout])
                 self._cnf.append([-ai, -cin, cout])
                 self._cnf.append([-bi, -cin, cout])
+
+        return self
+
+    def eq_words(self, a: list[Literal], b: list[Literal]) -> CNF:
+        n = len(a)
+        assert len(b) == n, "Both lists must have the same length"
+        for i in range(n):
+            self.equals(a[i], b[i])
+        return self
+
+    def permute_words(self, a: list[Literal], b: list[Literal], perm: list[int]) -> CNF:
+        n = len(a)
+        assert len(b) == n and len(perm) == n, "All arguments must have the same length"
+        for i in range(n):
+            self.equals(a[i], b[perm[i]])
+        return self
+
+    def sbox(self, a: list[Literal], b: list[Literal], table: list[int]) -> CNF:
+        n = len(a)
+        assert len(b) == n, "Input and output words must have the same length"
+        assert len(table) == 2 ** n, "Table must have 2^n entries for n-bit input"
+        assert set(table) == set(range(2 ** n)), "Table must be a bijection"
+        for in_val in range(2 ** n):
+            out_val = table[in_val]
+            for j in range(n):
+                clause = []
+                for k in range(n):
+                    bit = (in_val >> k) & 1
+                    clause.append(-a[k].value() if bit else a[k].value())
+                out_bit = (out_val >> j) & 1
+                clause.append(b[j].value() if out_bit else -b[j].value())
+                self._cnf.clauses.append(clause)
+        return self
+
+    def xor_words(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> CNF:
+        n = len(a)
+        assert len(b) == n and len(c) == n, "All three lists must have the same length"
+
+        for i in range(n):
+            # c[i] = a[i] XOR b[i] ↔  a[i] XOR b[i] XOR c[i] = 0
+            self.xor([a[i], b[i], c[i]])
 
         return self
 
