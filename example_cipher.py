@@ -5,20 +5,23 @@ Cipher: 16-bit block, 16-bit key, R rounds of {AddRoundKey, S-box on every
 PRESENT S-box. No key schedule — the same key is used every round. This is
 insecure but the CNF is large enough that key recovery does real work.
 
-The base formula encodes only the cipher relation E(key, ptx) = ctx. Concrete
-plaintext and ciphertext values are supplied as assumptions per solve, so the
-formula itself never mentions any specific value of key, ptx, or ctx.
+The base formula encodes NUM_BLOCKS independent cipher instances that all share
+the same key. Each block contributes one (ptx, ctx) pair as assumptions, so
+more blocks → fewer spurious keys returned by the solver.
 
-Two experiments:
+Three experiments:
 
   1. Ad-hoc.   Fresh IncrementalSolver bootstrapped with the cipher CNF, then
-               immediately solve for the target (ptx, ctx) → recover a key.
+               immediately solve for the target (ptx, ctx) pairs → recover a key.
 
   2. Warmed.   Fresh IncrementalSolver bootstrapped with the same cipher CNF,
                then K exploratory solves with random (ptx, ctx) pairs (each
                generated from a random key), then solve for the same target.
 
-Reported: total elapsed and target-solve time in isolation for both.
+  3. Progressive priming.  Reveal progressively more bits of all target pairs
+               as assumptions before the full solve.
+
+Reported: total elapsed and target-solve time in isolation for all three.
 
 Run from project root:
 
@@ -37,9 +40,10 @@ from sat.solver import IncrementalSolver
 
 
 SOLVER_NAME = "cadical153"
-BLOCK_BITS = 16
-KEY_BITS = 16
+BLOCK_BITS = 20
+KEY_BITS = 20
 NUM_ROUNDS = 6
+NUM_BLOCKS = 2   # known-plaintext pairs per solve; more → fewer spurious keys
 NUM_WARMUPS = 12
 SEED_TARGET = 0xDEAD
 SEED_WARMUP = 0xBEEF
@@ -88,34 +92,43 @@ def encrypt(key: int, ptx: int) -> int:
 # ------------------------------ CNF encoding -------------------------------
 
 
-def build_cipher_cnf() -> tuple[CNF, list, list, list]:
+def build_cipher_cnf() -> tuple[CNF, list, list[list], list[list]]:
+    """Build a CNF encoding NUM_BLOCKS independent cipher instances sharing one key.
+
+    Returns (cnf, key_lits, ptxs_lits, ctxs_lits) where ptxs_lits and
+    ctxs_lits are lists of length NUM_BLOCKS.
+    """
     cnf = CNF()
     key = cnf.reserve_names([f"key_{i}" for i in range(KEY_BITS)])
-    ptx = cnf.reserve_names([f"ptx_{i}" for i in range(BLOCK_BITS)])
-    ctx = cnf.reserve_names([f"ctx_{i}" for i in range(BLOCK_BITS)])
+    ptxs, ctxs = [], []
 
-    state = ptx
-    for r in range(NUM_ROUNDS):
-        xored = cnf.reserve_names([f"x_r{r}_{i}" for i in range(BLOCK_BITS)])
-        cnf.xor_words(state, key, xored)
+    for b in range(NUM_BLOCKS):
+        ptx = cnf.reserve_names([f"ptx_b{b}_{i}" for i in range(BLOCK_BITS)])
+        ctx = cnf.reserve_names([f"ctx_b{b}_{i}" for i in range(BLOCK_BITS)])
+        ptxs.append(ptx)
+        ctxs.append(ctx)
 
-        sboxed = cnf.reserve_names([f"s_r{r}_{i}" for i in range(BLOCK_BITS)])
-        for nib in range(BLOCK_BITS // 4):
-            cnf.sbox(xored[4 * nib:4 * (nib + 1)],
-                     sboxed[4 * nib:4 * (nib + 1)],
-                     SBOX)
+        state = ptx
+        for r in range(NUM_ROUNDS):
+            xored = cnf.reserve_names([f"x_b{b}_r{r}_{i}" for i in range(BLOCK_BITS)])
+            cnf.xor_words(state, key, xored)
 
-        if r < NUM_ROUNDS - 1:
-            permuted = cnf.reserve_names([f"p_r{r}_{i}" for i in range(BLOCK_BITS)])
-            cnf.permute_words(sboxed, permuted, PERM)
-            state = permuted
-        else:
-            state = sboxed
+            sboxed = cnf.reserve_names([f"s_b{b}_r{r}_{i}" for i in range(BLOCK_BITS)])
+            for nib in range(BLOCK_BITS // 4):
+                cnf.sbox(xored[4 * nib:4 * (nib + 1)],
+                         sboxed[4 * nib:4 * (nib + 1)],
+                         SBOX)
 
-    # Final AddRoundKey → constrained equal to ctx.
-    cnf.xor_words(state, key, ctx)
+            if r < NUM_ROUNDS - 1:
+                permuted = cnf.reserve_names([f"p_b{b}_r{r}_{i}" for i in range(BLOCK_BITS)])
+                cnf.permute_words(sboxed, permuted, PERM)
+                state = permuted
+            else:
+                state = sboxed
 
-    return cnf, key, ptx, ctx
+        cnf.xor_words(state, key, ctx)
+
+    return cnf, key, ptxs, ctxs
 
 
 # ------------------------------ helpers ------------------------------------
@@ -136,12 +149,12 @@ def extract_int(model_ids: list[int], bits) -> int:
 
 
 def solve_for_key(solver: IncrementalSolver,
-                  ptx_lits, ctx_lits, key_lits,
-                  ptx_val: int, ctx_val: int) -> tuple[float, int]:
-    assumptions = (
-        value_to_assumptions(ptx_lits, ptx_val)
-        + value_to_assumptions(ctx_lits, ctx_val)
-    )
+                  ptxs_lits, ctxs_lits, key_lits,
+                  ptx_vals: list[int], ctx_vals: list[int]) -> tuple[float, int]:
+    assumptions = []
+    for ptx_lits, ctx_lits, ptx_val, ctx_val in zip(ptxs_lits, ctxs_lits, ptx_vals, ctx_vals):
+        assumptions += value_to_assumptions(ptx_lits, ptx_val)
+        assumptions += value_to_assumptions(ctx_lits, ctx_val)
     t0 = time.perf_counter()
     sol = solver.solve(assumptions=assumptions)
     dt = time.perf_counter() - t0
@@ -151,24 +164,22 @@ def solve_for_key(solver: IncrementalSolver,
 
 
 def warm_up_progressive(solver: IncrementalSolver,
-                        ptx_lits, ctx_lits,
-                        target_ptx: int, target_ctx: int,
+                        ptxs_lits, ctxs_lits,
+                        target_ptxs: list[int], target_ctxs: list[int],
                         step: int = 1) -> tuple[float, int]:
-    """Prime the solver by revealing progressively more bits of the *target*
-    ptx and ctx as assumptions. Bits are revealed in chunks of `step`, so the
-    schedule is k = step, 2·step, 3·step, ..., largest multiple below
-    BLOCK_BITS. Each partial query is severely under-constrained (many valid
-    keys) but exercises the base cipher structure around the target's actual
-    bit pattern, so the learned clauses are directly relevant to the final
-    full-target solve.
+    """Prime the solver by revealing progressively more bits of all target pairs.
+
+    Bits are revealed in chunks of `step` across every block simultaneously,
+    so the schedule is k = step, 2·step, ..., largest multiple below BLOCK_BITS.
     """
     total = 0.0
     steps = 0
     for k in range(step, BLOCK_BITS, step):
-        assumptions = (
-            value_to_assumptions(ptx_lits[:k], target_ptx)
-            + value_to_assumptions(ctx_lits[:k], target_ctx)
-        )
+        assumptions = []
+        for ptx_lits, ctx_lits, target_ptx, target_ctx in zip(
+                ptxs_lits, ctxs_lits, target_ptxs, target_ctxs):
+            assumptions += value_to_assumptions(ptx_lits[:k], target_ptx)
+            assumptions += value_to_assumptions(ctx_lits[:k], target_ctx)
         t0 = time.perf_counter()
         sol = solver.solve(assumptions=assumptions)
         total += time.perf_counter() - t0
@@ -182,24 +193,25 @@ def warm_up_progressive(solver: IncrementalSolver,
 
 
 def main() -> None:
-    cnf, key_lits, ptx_lits, ctx_lits = build_cipher_cnf()
+    cnf, key_lits, ptxs_lits, ctxs_lits = build_cipher_cnf()
     print(f"CNF: {len(cnf.clauses())} clauses, "
-          f"{NUM_ROUNDS} rounds, {BLOCK_BITS}-bit block/key")
+          f"{NUM_ROUNDS} rounds, {BLOCK_BITS}-bit block/key, {NUM_BLOCKS} block(s)")
 
     rng_t = random.Random(SEED_TARGET)
     target_key = rng_t.randrange(1 << KEY_BITS)
-    target_ptx = rng_t.randrange(1 << BLOCK_BITS)
-    target_ctx = encrypt(target_key, target_ptx)
-    print(f"target: key={target_key:#06x} ptx={target_ptx:#06x} "
-          f"ctx={target_ctx:#06x}")
+    target_ptxs = [rng_t.randrange(1 << BLOCK_BITS) for _ in range(NUM_BLOCKS)]
+    target_ctxs = [encrypt(target_key, p) for p in target_ptxs]
+    print(f"target: key={target_key:#06x} "
+          + "  ".join(f"ptx={p:#06x} ctx={c:#06x}"
+                      for p, c in zip(target_ptxs, target_ctxs)))
 
     print()
     print("Experiment 1: ad-hoc (no warm-up)")
     print("-" * 62)
     with IncrementalSolver(SOLVER_NAME, cnf) as solver:
         adhoc_dt, recovered = solve_for_key(
-            solver, ptx_lits, ctx_lits, key_lits, target_ptx, target_ctx)
-    assert encrypt(recovered, target_ptx) == target_ctx
+            solver, ptxs_lits, ctxs_lits, key_lits, target_ptxs, target_ctxs)
+    assert all(encrypt(recovered, p) == c for p, c in zip(target_ptxs, target_ctxs))
     match = "(== target)" if recovered == target_key else "(other valid key)"
     print(f"  target solve: {adhoc_dt * 1000:8.1f} ms   key={recovered:#06x} {match}")
     print(f"  total:        {adhoc_dt * 1000:8.1f} ms")
@@ -212,14 +224,13 @@ def main() -> None:
         rng_w = random.Random(SEED_WARMUP)
         for _ in range(NUM_WARMUPS):
             wk = rng_w.randrange(1 << KEY_BITS)
-            wp = rng_w.randrange(1 << BLOCK_BITS)
-            wc = encrypt(wk, wp)
-            dt, _ = solve_for_key(
-                solver, ptx_lits, ctx_lits, key_lits, wp, wc)
+            wps = [rng_w.randrange(1 << BLOCK_BITS) for _ in range(NUM_BLOCKS)]
+            wcs = [encrypt(wk, wp) for wp in wps]
+            dt, _ = solve_for_key(solver, ptxs_lits, ctxs_lits, key_lits, wps, wcs)
             warm_time += dt
         warmed_dt, recovered = solve_for_key(
-            solver, ptx_lits, ctx_lits, key_lits, target_ptx, target_ctx)
-    assert encrypt(recovered, target_ptx) == target_ctx
+            solver, ptxs_lits, ctxs_lits, key_lits, target_ptxs, target_ctxs)
+    assert all(encrypt(recovered, p) == c for p, c in zip(target_ptxs, target_ctxs))
     total = warm_time + warmed_dt
     match = "(== target)" if recovered == target_key else "(other valid key)"
     print(f"  warm-up:      {warm_time * 1000:8.1f} ms   ({NUM_WARMUPS} probes)")
@@ -233,10 +244,10 @@ def main() -> None:
     for step in STEP_SIZES:
         with IncrementalSolver(SOLVER_NAME, cnf) as solver:
             prog_warm_time, prog_steps = warm_up_progressive(
-                solver, ptx_lits, ctx_lits, target_ptx, target_ctx, step=step)
+                solver, ptxs_lits, ctxs_lits, target_ptxs, target_ctxs, step=step)
             prog_target_dt, prog_recovered = solve_for_key(
-                solver, ptx_lits, ctx_lits, key_lits, target_ptx, target_ctx)
-        assert encrypt(prog_recovered, target_ptx) == target_ctx
+                solver, ptxs_lits, ctxs_lits, key_lits, target_ptxs, target_ctxs)
+        assert all(encrypt(prog_recovered, p) == c for p, c in zip(target_ptxs, target_ctxs))
         prog_results.append((step, prog_warm_time, prog_steps, prog_target_dt))
         match = "(== target)" if prog_recovered == target_key else "(other valid key)"
         print(f"  step={step:2d}  probes={prog_steps:2d}  "
