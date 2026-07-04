@@ -182,6 +182,9 @@ def test_add_words(ternary_cnf, solver, rng):
     assert sol
     assert sol.value_of(c_lits) == (a_val + b_val) % (2**n)
 
+    cnf.exclude(sol.assign(c_lits))
+    assert not solver.solve(cnf)
+
 
 def test_add_words_unsat(ternary_cnf, solver, rng):
     cnf, a_lits, b_lits, c_lits = ternary_cnf
@@ -216,6 +219,9 @@ def test_add_words_solve_b(ternary_cnf, solver, rng):
     assert sol
     assert (a_val + sol.value_of(b_lits)) % (2**n) == c_val
 
+    cnf.exclude(sol.assign(b_lits))
+    assert not solver.solve(cnf)
+
 
 def test_xor_words(ternary_cnf, solver, rng):
     cnf, a_lits, b_lits, c_lits = ternary_cnf
@@ -231,6 +237,9 @@ def test_xor_words(ternary_cnf, solver, rng):
     sol = solver.solve(cnf)
     assert sol
     assert sol.value_of(c_lits) == a_val ^ b_val
+
+    cnf.exclude(sol.assign(c_lits))
+    assert not solver.solve(cnf)
 
 
 def test_xor_words_unsat(ternary_cnf, solver, rng):
@@ -262,6 +271,9 @@ def test_eq_words(binary_cnf, solver, rng):
 
     assert sol
     assert sol.value_of(b_lits) == a_val
+
+    cnf.exclude(sol.assign(b_lits))
+    assert not solver.solve(cnf)
 
 
 def test_eq_words_unsat(binary_cnf, solver, rng):
@@ -296,6 +308,9 @@ def test_permute_words(binary_cnf, solver, rng):
         expected_b_val |= ((a_val >> i) & 1) << perm[i]
     assert sol.value_of(b_lits) == expected_b_val
 
+    cnf.exclude(sol.assign(b_lits))
+    assert not solver.solve(cnf)
+
 
 def test_permute_words_unsat(binary_cnf, solver, rng):
     cnf, a_lits, b_lits = binary_cnf
@@ -327,6 +342,9 @@ def test_sbox(binary_cnf, solver, rng):
     sol = solver.solve(cnf)
     assert sol
     assert sol.value_of(b_lits) == table[a_val]
+
+    cnf.exclude(sol.assign(b_lits))
+    assert not solver.solve(cnf)
 
 
 def test_sbox_unsat(binary_cnf, solver, rng):
