@@ -243,6 +243,9 @@ class IncrementalSolver:
         """Solver-reported accounting (conflicts, decisions, propagations, ...)."""
         return dict(self._solver.accum_stats() or {})
 
+    def add_clause(self, clause: list[int]) -> None:
+        self._solver.add_clause(clause)
+
     def close(self) -> None:
         self._solver.delete()
 

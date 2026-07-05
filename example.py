@@ -99,12 +99,12 @@ def enumerate_real() -> tuple[float, int]:
     with IncrementalSolver(SOLVER_NAME, cnf) as solver:
         while True:
             t0 = time.perf_counter()
-            sat, ids = solver.solve()
+            sol = solver.solve()
             solve_time += time.perf_counter() - t0
-            if not sat:
+            if not sol:
                 break
             count += 1
-            blocker = [-i for i in ids if abs(i) in keep]
+            blocker = [-i for i in sol.assignment() if abs(i) in keep]
             solver.add_clause(blocker)
     return solve_time, count
 
@@ -117,12 +117,12 @@ def enumerate_fake() -> tuple[float, int]:
     count = 0
     while True:
         t0 = time.perf_counter()
-        sat, ids = solver.solve(cnf)
+        sol = solver.solve(cnf)
         solve_time += time.perf_counter() - t0
-        if not sat:
+        if not sol:
             break
         count += 1
-        cnf.exclude_by_values([i for i in ids if abs(i) in keep])
+        cnf.exclude_by_values([i for i in sol.assignment() if abs(i) in keep])
     return solve_time, count
 
 
@@ -137,10 +137,10 @@ def assume_real() -> tuple[float, int, int]:
         for lits in node_lits.values():
             for lit in lits:
                 t0 = time.perf_counter()
-                sat, _ = solver.solve(assumptions=[lit.value()])
+                sol = solver.solve(assumptions=[lit.value()])
                 solve_time += time.perf_counter() - t0
                 queries += 1
-                sat_count += int(sat)
+                sat_count += int(bool(sol))
     return solve_time, queries, sat_count
 
 
@@ -155,11 +155,11 @@ def assume_fake() -> tuple[float, int, int]:
             # rebuild cost out of the timed section so we measure pure solve.
             cnf._cnf.clauses.append([lit.value()])
             t0 = time.perf_counter()
-            sat, _ = solver.solve(cnf)
+            sol = solver.solve(cnf)
             solve_time += time.perf_counter() - t0
             cnf._cnf.clauses.pop()
             queries += 1
-            sat_count += int(sat)
+            sat_count += int(bool(sol))
     return solve_time, queries, sat_count
 
 
