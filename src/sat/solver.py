@@ -210,48 +210,25 @@ class Solver:
 
 
 class IncrementalSolver:
-    """Persistent pysat solver — learned clauses and internal state survive
-    across `solve()` calls, and `assumptions` are supported for cheap what-if
-    queries without mutating the formula.
 
-    Only pysat builtin backends are usable; external solvers like kissat have
-    no incremental interface.
-    """
+    # Glucose-family solvers require `incr=True`
+    _needs_incr_flag = {"glucose3", "glucose4", "glucose42", "gluecard3", "gluecard4"}
 
-    # Glucose-family solvers require `incr=True` for correct assumption-based
-    # incremental behaviour. Every other pysat builtin supports incremental
-    # natively and rejects the flag with NotImplementedError.
-    _needs_incr_flag = {
-        "glucose3", "glucose4", "glucose42",
-        "gluecard3", "gluecard4",
-    }
-
-    def __init__(self, name: str, cnf: CNF | None = None):
+    def __init__(self, name: str, base_cnf: CNF):
         if name not in Solver.builtin_solvers:
             raise ValueError(
                 f"Solver {name} not supported for incremental use "
                 f"(builtins only: {Solver.builtin_solvers})"
             )
+
         self.__name = name
         kwargs = {"incr": True} if name in self._needs_incr_flag else {}
         self._solver = PySolver(name=name, **kwargs)
-        # Track the most recently appended pool so solutions can be queried by
-        # variable name; add_clause-only usage leaves this None (id-only queries).
-        self._v_pool = None
-        if cnf is not None:
-            self.append(cnf)
+        self._solver.append_formula(base_cnf.clauses())
+        self._v_pool = base_cnf.v_pool()
 
     def name(self) -> str:
         return self.__name
-
-    def append(self, cnf: CNF) -> "IncrementalSolver":
-        self._solver.append_formula(cnf.clauses())
-        self._v_pool = cnf.v_pool()
-        return self
-
-    def add_clause(self, clause: list[int]) -> "IncrementalSolver":
-        self._solver.add_clause(clause)
-        return self
 
     def solve(self, assumptions: list[int] | None = None) -> Solution:
         sat = True if self._solver.solve(assumptions=assumptions or []) else False
@@ -269,7 +246,7 @@ class IncrementalSolver:
     def close(self) -> None:
         self._solver.delete()
 
-    def __enter__(self) -> "IncrementalSolver":
+    def __enter__(self) -> IncrementalSolver:
         return self
 
     def __exit__(self, *_) -> None:
