@@ -28,10 +28,11 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sat.cnf import CNF
-from sat.solver import Solver, IncrementalSolver
+from sat.solver import Solver
+from sat.incremental_solver import IncrementalSolver
 
 
 SOLVER_NAME = "cadical153"

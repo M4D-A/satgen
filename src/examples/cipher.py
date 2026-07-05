@@ -33,15 +33,15 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sat.cnf import CNF
-from sat.solver import IncrementalSolver
+from sat.incremental_solver import IncrementalSolver
 
 
 SOLVER_NAME = "cadical153"
-BLOCK_BITS = 20
-KEY_BITS = 20
+BLOCK_BITS = 16
+KEY_BITS = 16
 NUM_ROUNDS = 6
 NUM_BLOCKS = 2   # known-plaintext pairs per solve; more → fewer spurious keys
 NUM_WARMUPS = 12

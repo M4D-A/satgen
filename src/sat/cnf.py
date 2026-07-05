@@ -2,38 +2,7 @@ from collections.abc import Iterable
 from pysat.formula import CNF as CNF_core, IDPool
 from pysat.card import CardEnc
 from itertools import product
-
-class Literal: #TODO: dataclas??
-    def __init__(self, name: str, id: int, value: bool | None = None):
-        self.__name = name
-
-        assert not id == 0, "ID cannot be equal to zero"
-        if value is None:
-            self.__value = id
-        else:
-            assert id > 0, "ID must be an absolute value if bool value stated"
-            self.__value = id if value else -id
-
-    def __bool__(self) -> bool:
-        return self.__value > 0
-
-    def __neg__(self) -> Literal:
-        return Literal(self.__name, -self.__value)
-
-    def __str__(self) -> str:
-        return f"{self.__name}: {self.__bool__()} ({self.__value})"
-
-    def value(self) -> int:
-        return self.__value
-
-    def name(self) -> str:
-        return self.__name
-
-    def __eq__(self, other) -> bool:
-        return (self.name(), self.value()) == (other.name(), other.value())
-
-    def __abs__(self) -> Literal:
-        return Literal(self.__name, abs(self.__value))
+from sat.literal import Literal
 
 
 class CNF():
@@ -121,7 +90,7 @@ class CNF():
         name = str(pool.obj(abs_id))
         return Literal(name, id)
 
-    def set_literal(self, literal: Literal, value: bool | None = None) -> CNF:
+    def set_literal(self, literal: Literal, value: bool | None = None) -> "CNF":
         lval = literal.value()
         if value is not None:
             sign = 1 if value else -1
@@ -129,24 +98,24 @@ class CNF():
         self._cnf.append([lval])
         return self
 
-    def set_literals(self, literals: list[Literal]) -> CNF:
+    def set_literals(self, literals: list[Literal]) -> "CNF":
         for lit in literals:
             self.set_literal(lit)
         return self
 
-    def set_word(self, literals: list[Literal], value) -> CNF:
+    def set_word(self, literals: list[Literal], value) -> "CNF":
         for i, lit in enumerate(literals):
             self.set_literal(lit, bool((value >> i) & 1))
         return self
 
-    def equals(self, literal_a: Literal, literal_b: Literal) -> CNF:
+    def equals(self, literal_a: Literal, literal_b: Literal) -> "CNF":
         lval_a = literal_a.value()
         lval_b = literal_b.value()
         self._cnf.append([-lval_a, lval_b])
         self._cnf.append([lval_a, -lval_b])
         return self
 
-    def equals_and(self, literal_a: Literal, literals_b: list[Literal]) -> CNF:
+    def equals_and(self, literal_a: Literal, literals_b: list[Literal]) -> "CNF":
         lval_a = literal_a.value()
         self._cnf.append([lval_a] + [-(b_elem.value())
                          for b_elem in literals_b])
@@ -154,13 +123,13 @@ class CNF():
         self._cnf.clauses += new_clauses
         return self
 
-    def equals_and_by_values(self, literal_a: int, literals_b: list[int]) -> CNF:
+    def equals_and_by_values(self, literal_a: int, literals_b: list[int]) -> "CNF":
         header_clauses = [[literal_a] + [-b_elem for b_elem in literals_b]]
         new_clauses = header_clauses + [[-literal_a, b_elem] for b_elem in literals_b]
         self._cnf.clauses += new_clauses
         return self
 
-    def equals_or(self, literal_a: Literal, literals_b: list[Literal]) -> CNF:
+    def equals_or(self, literal_a: Literal, literals_b: list[Literal]) -> "CNF":
         lval_a = literal_a.value()
         self._cnf.append([-lval_a] + [b_elem.value()
                          for b_elem in literals_b])
@@ -168,7 +137,7 @@ class CNF():
         self._cnf.clauses += new_clauses
         return self
 
-    def xor(self, literals: list[Literal]) -> CNF:
+    def xor(self, literals: list[Literal]) -> "CNF":
         clause_len = self._max_clause_len
         if clause_len and clause_len <= 2:
             raise ValueError("split must be greater than 2 if set to True")
@@ -187,7 +156,7 @@ class CNF():
             self.xor([aux_literal] + literals[clause_len - 1:])
         return self
 
-    def atleast(self, literals: list[Literal], lower_bound: int) -> CNF:
+    def atleast(self, literals: list[Literal], lower_bound: int) -> "CNF":
         ids = [lit.value() for lit in literals]
         clauses = CardEnc.atleast(
             ids,
@@ -198,7 +167,7 @@ class CNF():
         self._cnf.extend(clauses)
         return self
 
-    def atmost(self, literals: list[Literal], upper_bound: int) -> CNF:
+    def atmost(self, literals: list[Literal], upper_bound: int) -> "CNF":
         ids = [lit.value() for lit in literals]
         clauses = CardEnc.atmost(
             ids,
@@ -209,7 +178,7 @@ class CNF():
         self._cnf.extend(clauses)
         return self
 
-    def exactly(self, literals: list[Literal], upper_bound: int) -> CNF:
+    def exactly(self, literals: list[Literal], upper_bound: int) -> "CNF":
         ids = [lit.value() for lit in literals]
         clauses = CardEnc.equals(
             ids,
@@ -220,13 +189,13 @@ class CNF():
         self._cnf.extend(clauses)
         return self
 
-    def nand(self, literal_a: Literal, literal_b: Literal) -> CNF:
+    def nand(self, literal_a: Literal, literal_b: Literal) -> "CNF":
         lval_a = literal_a.value()
         lval_b = literal_b.value()
         self._cnf.append([-lval_a, -lval_b])
         return self
 
-    def add_words(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> CNF:
+    def add_words(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> "CNF":
         n = len(a)
         assert len(b) == n and len(c) == n, "All three lists must have the same length"
 
@@ -249,21 +218,21 @@ class CNF():
 
         return self
 
-    def eq_words(self, a: list[Literal], b: list[Literal]) -> CNF:
+    def eq_words(self, a: list[Literal], b: list[Literal]) -> "CNF":
         n = len(a)
         assert len(b) == n, "Both lists must have the same length"
         for i in range(n):
             self.equals(a[i], b[i])
         return self
 
-    def permute_words(self, a: list[Literal], b: list[Literal], perm: list[int]) -> CNF:
+    def permute_words(self, a: list[Literal], b: list[Literal], perm: list[int]) -> "CNF":
         n = len(a)
         assert len(b) == n and len(perm) == n, "All arguments must have the same length"
         for i in range(n):
             self.equals(a[i], b[perm[i]])
         return self
 
-    def sbox(self, a: list[Literal], b: list[Literal], table: list[int]) -> CNF:
+    def sbox(self, a: list[Literal], b: list[Literal], table: list[int]) -> "CNF":
         n = len(a)
         assert len(b) == n, "Input and output words must have the same length"
         assert len(table) == 2 ** n, "Table must have 2^n entries for n-bit input"
@@ -280,7 +249,7 @@ class CNF():
                 self._cnf.clauses.append(clause)
         return self
 
-    def xor_words(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> CNF:
+    def xor_words(self, a: list[Literal], b: list[Literal], c: list[Literal]) -> "CNF":
         n = len(a)
         assert len(b) == n and len(c) == n, "All three lists must have the same length"
 
@@ -290,13 +259,13 @@ class CNF():
 
         return self
 
-    def exclude(self, literals: list[Literal]) -> CNF:
+    def exclude(self, literals: list[Literal]) -> "CNF":
         aux_literal = self._reserve_internal()
         self.equals_and(aux_literal, literals)
         self.set_literal(-aux_literal)
         return self
 
-    def exclude_by_values(self, literals: list[int]) -> CNF:
+    def exclude_by_values(self, literals: list[int]) -> "CNF":
         clause = [-lit for lit in literals]
         self._cnf.clauses.append(clause)
         return self
